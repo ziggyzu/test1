@@ -1,4 +1,4 @@
-import { UserCircle, LogOut, Award, CalendarDays, Timer, Trophy, Mail, Phone } from 'lucide-react';
+import { LogOut, Award, CalendarDays, Timer, Trophy, Mail, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance, useCourses, useDeadlines, useDeadlineCompletions, useTestMarks, useNotes, useNoteVotes } from '../hooks/useApi';
 
@@ -22,6 +22,7 @@ export default function Profile() {
   // Pending deadlines
   const pendingCount = deadlines?.filter((d) => {
     const isDone = completions?.some((c) => c.deadlineId === d.id);
+    // eslint-disable-next-line react-hooks/purity
     return !isDone && new Date(d.dueDate).getTime() > Date.now();
   }).length ?? 0;
 

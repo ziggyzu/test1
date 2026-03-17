@@ -75,7 +75,7 @@ export default function TeammateFinder() {
           <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full bg-surface-800 rounded-xl px-4 py-2.5 text-sm text-surface-200 border border-surface-700 focus:border-primary-500 outline-none" />
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" rows={2} className="w-full bg-surface-800 rounded-xl px-4 py-2.5 text-sm text-surface-200 border border-surface-700 focus:border-primary-500 outline-none resize-none" />
           <div className="flex gap-3">
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as any })} className="flex-1 bg-surface-800 rounded-xl px-4 py-2.5 text-sm text-surface-200 border border-surface-700 focus:border-primary-500 outline-none">
+            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as 'project' | 'hackathon' | 'study-group' })} className="flex-1 bg-surface-800 rounded-xl px-4 py-2.5 text-sm text-surface-200 border border-surface-700 focus:border-primary-500 outline-none">
               <option value="project">Project</option>
               <option value="hackathon">Hackathon</option>
               <option value="study-group">Study Group</option>

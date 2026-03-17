@@ -32,16 +32,6 @@ export default function GradeCalculator() {
   const requiredFinalPct = Math.min(100, Math.round((requiredFinal / finalWeight) * 100));
   const isAchievable = requiredFinalPct <= 100;
 
-  const getGradeFromTotal = (total: number) => {
-    for (const g of UGC_GRADES) {
-      if (total >= g.minMark) return g;
-    }
-    return UGC_GRADES[UGC_GRADES.length - 1];
-  };
-
-  const currentGrade = getGradeFromTotal(totalEarned + finalWeight); // potential max
-  const guaranteedGrade = getGradeFromTotal(totalEarned); // if 0 on final
-
   return (
     <div className="space-y-6">
       {/* Header */}

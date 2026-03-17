@@ -6,7 +6,10 @@ import {
   ChevronRight, Flame,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTodaySchedule, useCourses, useDeadlines, useDeadlineCompletions } from '../hooks/useApi';
+import { useTodaySchedule, useCourses } from '../hooks/useApi';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import type { Assignment, Resource } from '../types';
 
 const quickLinks = [
   { to: '/routine', icon: CalendarDays, label: 'Routine', color: 'from-emerald-500 to-teal-600' },
@@ -19,9 +22,10 @@ const quickLinks = [
   { to: '/resources', icon: BookOpen, label: 'Resources', color: 'from-fuchsia-500 to-pink-600' },
 ];
 
-function useCountdown(targetDate: string) {
+function useCountdown(targetDate?: string) {
   const [remaining, setRemaining] = useState('');
   useEffect(() => {
+    if (!targetDate) return;
     const update = () => {
       const diff = new Date(targetDate).getTime() - Date.now();
       if (diff <= 0) { setRemaining('Now!'); return; }
@@ -42,8 +46,28 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { data: todaySlots } = useTodaySchedule();
   const { data: courses } = useCourses();
-  const { data: deadlines } = useDeadlines();
-  const { data: completions } = useDeadlineCompletions(user?.id);
+
+  const [liveAssignments, setLiveAssignments] = useState<Assignment[]>([]);
+  const [liveResources, setLiveResources] = useState<Resource[]>([]);
+
+  useEffect(() => {
+    const unsubA = onSnapshot(collection(db, 'assignments'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment));
+      // Only keep future ones and sort
+      const now = Date.now();
+      const upcoming = data.filter(a => new Date(a.dueDate).getTime() > now);
+      upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      setLiveAssignments(upcoming);
+    });
+
+    const unsubR = onSnapshot(collection(db, 'resources'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Resource));
+      data.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setLiveResources(data);
+    });
+
+    return () => { unsubA(); unsubR(); };
+  }, []);
 
   // Find next class
   const now = new Date();
@@ -58,17 +82,9 @@ export default function Dashboard() {
 
   const nextCourse = nextSlot ? courses?.find((c) => c.id === nextSlot.courseId) : null;
 
-  // Nearest deadline
-  const pendingDeadlines = deadlines
-    ?.filter((d) => {
-      const isDone = completions?.some((c) => c.deadlineId === d.id);
-      return !isDone && new Date(d.dueDate).getTime() > Date.now();
-    })
-    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
-  const nearestDeadline = pendingDeadlines?.[0];
-  const nearestDeadlineCourse = nearestDeadline ? courses?.find((c) => c.id === nearestDeadline.courseId) : null;
-  const countdown = useCountdown(nearestDeadline?.dueDate ?? new Date(Date.now() + 86400000).toISOString());
+  // Nearest assignment
+  const nearestAssignment = liveAssignments[0];
+  const countdown = useCountdown(nearestAssignment?.dueDate);
 
   const hours = now.getHours();
   const greeting = hours < 12 ? 'Good Morning' : hours < 17 ? 'Good Afternoon' : 'Good Evening';
@@ -107,15 +123,15 @@ export default function Dashboard() {
         </div>
 
         {/* Countdown */}
-        {nearestDeadline && (
+        {nearestAssignment && (
           <div className="flex items-center gap-4 bg-surface-800/50 rounded-xl p-4">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shrink-0 pulse-glow">
               <Timer className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-surface-500 uppercase font-medium">Nearest Deadline</p>
-              <p className="font-semibold truncate">{nearestDeadline.title}</p>
-              <p className="text-xs text-surface-400">{nearestDeadlineCourse?.code}</p>
+              <p className="text-xs text-surface-500 uppercase font-medium">Nearest Assignment</p>
+              <p className="font-semibold truncate">{nearestAssignment.title}</p>
+              <p className="text-xs text-surface-400">{nearestAssignment.subject}</p>
             </div>
             <div className="text-right">
               <p className="text-lg font-bold text-rose-400 tabular-nums">{countdown}</p>
@@ -144,27 +160,55 @@ export default function Dashboard() {
       </div>
 
       {/* Pending Deadlines Summary */}
-      {pendingDeadlines && pendingDeadlines.length > 0 && (
+      {liveAssignments.length > 0 && (
         <div className="glass rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider">Upcoming Deadlines</h2>
+            <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider">Upcoming Assignments</h2>
             <Link to="/deadlines" className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1">
               View all <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
           <div className="space-y-2">
-            {pendingDeadlines.slice(0, 3).map((dl) => {
-              const course = courses?.find((c) => c.id === dl.courseId);
-              return (
-                <div key={dl.id} className="flex items-center gap-3 bg-surface-800/40 rounded-xl px-4 py-3">
-                  <div className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{dl.title}</p>
-                    <p className="text-xs text-surface-500">{course?.code} · {new Date(dl.dueDate).toLocaleDateString('en-BD', { month: 'short', day: 'numeric' })}</p>
-                  </div>
+            {liveAssignments.slice(0, 3).map((dl) => (
+              <div key={dl.id} className="flex items-center gap-3 bg-surface-800/40 rounded-xl px-4 py-3">
+                <div className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{dl.title}</p>
+                  <p className="text-xs text-surface-500">{dl.subject} · {new Date(dl.dueDate).toLocaleDateString('en-BD', { month: 'short', day: 'numeric' })}</p>
                 </div>
-              );
-            })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Latest Resources */}
+      {liveResources.length > 0 && (
+        <div className="glass rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider">Latest Resources</h2>
+            <Link to="/resources" className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1">
+              View all <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {liveResources.slice(0, 3).map((res) => (
+              <a 
+                href={res.link} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                key={res.id} 
+                className="flex items-center gap-3 bg-surface-800/40 hover:bg-surface-700/50 transition-colors rounded-xl px-4 py-3 group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center shrink-0">
+                  <BookOpen className="w-4 h-4 text-primary-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate group-hover:text-primary-400 transition-colors">{res.title}</p>
+                  <p className="text-xs text-surface-500">{res.category}</p>
+                </div>
+              </a>
+            ))}
           </div>
         </div>
       )}

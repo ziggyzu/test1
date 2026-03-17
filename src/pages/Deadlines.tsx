@@ -40,6 +40,7 @@ export default function Deadlines() {
   const done = sorted.filter((d) => isDone(d.id));
 
   const getTimeLeft = (dueDate: string) => {
+    // eslint-disable-next-line react-hooks/purity
     const diff = new Date(dueDate).getTime() - Date.now();
     if (diff <= 0) return { text: 'Overdue', urgent: true };
     const days = Math.floor(diff / 86400000);

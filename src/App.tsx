@@ -12,6 +12,8 @@ import StudentDirectory from './pages/StudentDirectory';
 import Events from './pages/Events';
 import TeammateFinder from './pages/TeammateFinder';
 import Resources from './pages/Resources';
+import AdminRoute from './components/layout/AdminRoute';
+import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import WakeUpCall from './pages/WakeUpCall';
 
@@ -51,6 +53,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/admin/*" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/*" element={<ProtectedRoutes />} />
           </Routes>
         </BrowserRouter>

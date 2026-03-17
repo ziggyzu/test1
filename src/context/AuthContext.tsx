@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { 
   onAuthStateChanged, 
@@ -7,8 +8,9 @@ import {
   signOut as firebaseSignOut,
   type User as FirebaseUser
 } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase';
-import type { User } from '../types';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, googleProvider, db } from '../firebase';
+import type { User, UserRole } from '../types';
 import { USERS } from '../data/mockData';
 
 interface AuthContextType {
@@ -24,19 +26,37 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Helper function to map Firebase user to our custom User type
-const mapFirebaseUser = (fbUser: FirebaseUser): User => {
-  // Check if we have a mock user for this email to retain roles for demo purposes
+// Helper function to fetch and map Firebase user
+const fetchUserProfile = async (fbUser: FirebaseUser): Promise<User> => {
+  // Check if we have a mock user for this email
   const mockMatch = USERS.find(u => u.email === fbUser.email);
-  if (mockMatch) return mockMatch;
+  
+  let role: UserRole = 'student';
+  let name = fbUser.displayName || fbUser.email?.split('@')[0] || 'User';
+
+  try {
+    const userDocRef = doc(db, 'users', fbUser.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      const data = userDocSnap.data();
+      if (data.role) role = data.role as UserRole;
+      if (data.name) name = data.name;
+    }
+  } catch (err) {
+    console.error("Error fetching user profile", err);
+  }
+
+  if (mockMatch) {
+    return { ...mockMatch, role, id: fbUser.uid }; // merge mock data with real role/uid
+  }
   
   return {
     id: fbUser.uid,
-    name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+    name,
     email: fbUser.email || '',
     studentId: `STU-${Math.floor(Math.random() * 10000)}`,
-    role: 'student', // Default role
-    avatarUrl: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || fbUser.email || 'User')}&background=random`,
+    role, // Using role from Firestore
+    avatarUrl: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
     skills: [],
     department: 'CSE',
     batch: '2024',
@@ -49,9 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        setUser(mapFirebaseUser(fbUser));
+        const userProfile = await fetchUserProfile(fbUser);
+        setUser(userProfile);
       } else {
         setUser(null);
       }
@@ -62,7 +83,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
-    await signInWithPopup(auth, googleProvider);
+    const result = await signInWithPopup(auth, googleProvider);
+    const fbUser = result.user;
+    
+    try {
+      // Check if user document exists
+      const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+      if (!userDoc.exists()) {
+        await setDoc(doc(db, 'users', fbUser.uid), {
+          uid: fbUser.uid,
+          email: fbUser.email,
+          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+          role: 'student',
+          createdAt: new Date().toISOString()
+        });
+      }
+    } catch (e) {
+      console.error("Error creating user profile in Firestore", e);
+    }
   };
 
   const loginWithEmail = async (email: string, password: string) => {
@@ -70,7 +108,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUpWithEmail = async (email: string, password: string) => {
-    await createUserWithEmailAndPassword(auth, email, password);
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    const fbUser = result.user;
+    
+    try {
+      await setDoc(doc(db, 'users', fbUser.uid), {
+        uid: fbUser.uid,
+        email: fbUser.email,
+        name: fbUser.email?.split('@')[0] || 'User',
+        role: 'student',
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Error creating user profile in Firestore", e);
+    }
   };
 
   const logout = async () => {

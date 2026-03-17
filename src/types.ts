@@ -2,7 +2,23 @@
 // TYPES — Class Companion
 // ============================================================
 
-export type UserRole = 'admin' | 'student';
+export type UserRole = 'admin' | 'class_rep' | 'student';
+
+export interface Assignment {
+  id: string;
+  title: string;
+  dueDate: string;
+  subject: string;
+  createdAt: string;
+}
+
+export interface Resource {
+  id: string;
+  title: string;
+  link: string;
+  category: string;
+  createdAt: string;
+}
 
 export interface User {
   id: string;
