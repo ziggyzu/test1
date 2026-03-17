@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { PartyPopper, Plus, CheckCircle2, XCircle, DollarSign } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useEvents, useEventPayments, useTogglePayment, useCreateEvent } from '../hooks/useApi';
-import { USERS } from '../data/mockData';
+import { useEvents, useEventPayments, useTogglePayment, useCreateEvent, useBatchUsers } from '../hooks/useApi';
 
 export default function Events() {
   const { user, isAdmin } = useAuth();
@@ -10,6 +9,7 @@ export default function Events() {
   const { data: allPayments } = useEventPayments();
   const togglePayment = useTogglePayment();
   const createEvent = useCreateEvent();
+  const { data: usersData } = useBatchUsers();
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', date: '', feeAmount: 0 });
@@ -33,7 +33,7 @@ export default function Events() {
     togglePayment.mutate({ eventId, userId });
   };
 
-  const students = USERS.filter((u) => u.role === 'student');
+  const students = usersData?.filter((u) => u.role === 'student') || [];
 
   return (
     <div className="space-y-6">

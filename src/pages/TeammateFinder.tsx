@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { UserPlus, Plus, MessageCircle, Users, Code, BookOpen } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTeamPosts, useCreateTeamPost } from '../hooks/useApi';
-import { USERS } from '../data/mockData';
+import { useTeamPosts, useCreateTeamPost, useBatchUsers } from '../hooks/useApi';
 
 const typeConfig = {
   hackathon: { icon: Code, label: 'Hackathon', color: 'from-violet-500 to-purple-600', badge: 'bg-violet-500/20 text-violet-400' },
@@ -13,6 +12,7 @@ const typeConfig = {
 export default function TeammateFinder() {
   const { user } = useAuth();
   const { data: posts } = useTeamPosts();
+  const { data: usersData } = useBatchUsers();
   const createPost = useCreateTeamPost();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', type: 'project' as 'project' | 'hackathon' | 'study-group', maxMembers: 4, whatsappLink: '' });
@@ -90,7 +90,7 @@ export default function TeammateFinder() {
       {/* Posts */}
       <div className="space-y-3 stagger">
         {filtered?.map((post) => {
-          const author = USERS.find((u) => u.id === post.createdBy);
+          const author = usersData?.find((u) => u.id === post.createdBy);
           const config = typeConfig[post.type];
           const TypeIcon = config.icon;
           return (

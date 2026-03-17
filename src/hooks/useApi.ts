@@ -1,56 +1,49 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { collection, doc, query, where, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 import type {
   AttendanceRecord, ClassTest, TestVote, TestMark,
   Deadline, DeadlineCompletion, Event, EventPayment,
-  Note, NoteVote, TeamPost, WakeUpPriority, ScheduleSlot, Course,
+  Note, NoteVote, TeamPost, WakeUpPriority, ScheduleSlot, Course, User
 } from '../types';
-import {
-  COURSES, SCHEDULE,
-  initialAttendance, initialClassTests, initialTestVotes, initialTestMarks,
-  initialDeadlines, initialDeadlineCompletions,
-  initialEvents, initialEventPayments,
-  initialNotes, initialNoteVotes,
-  initialTeamPosts, initialWakeUpPriorities,
-} from '../data/mockData';
+import { getBatchUsers } from '../lib/firestore';
 
-// ───────────────────────────────────────────────
-//  In-memory store (simulates a database)
-// ───────────────────────────────────────────────
-const store = {
-  courses: [...COURSES] as Course[],
-  schedule: [...SCHEDULE] as ScheduleSlot[],
-  attendance: [...initialAttendance] as AttendanceRecord[],
-  classTests: [...initialClassTests] as ClassTest[],
-  testVotes: [...initialTestVotes] as TestVote[],
-  testMarks: [...initialTestMarks] as TestMark[],
-  deadlines: [...initialDeadlines] as Deadline[],
-  deadlineCompletions: [...initialDeadlineCompletions] as DeadlineCompletion[],
-  events: [...initialEvents] as Event[],
-  eventPayments: [...initialEventPayments] as EventPayment[],
-  notes: [...initialNotes] as Note[],
-  noteVotes: [...initialNoteVotes] as NoteVote[],
-  teamPosts: [...initialTeamPosts] as TeamPost[],
-  wakeUpPriorities: [...initialWakeUpPriorities] as WakeUpPriority[],
+// Helper to get batch ID safely
+const useBatchId = () => {
+  const { user } = useAuth();
+  return user?.batchId || '';
 };
 
-let _id = 1000;
-const genId = () => `gen_${_id++}`;
-const delay = (ms = 150) => new Promise((r) => setTimeout(r, ms));
-
 // ── COURSES ──
-export const useCourses = () =>
-  useQuery({ queryKey: ['courses'], queryFn: async () => { await delay(); return store.courses; } });
+export const useCourses = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['courses', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      const snap = await getDocs(query(collection(db, 'courses'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
+    },
+    enabled: !!batchId,
+  });
+};
 
 // ── SCHEDULE ──
-export const useSchedule = (day?: string) =>
-  useQuery({
-    queryKey: ['schedule', day],
+export const useSchedule = (day?: string) => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['schedule', batchId, day],
     queryFn: async () => {
-      await delay();
-      return day ? store.schedule.filter((s) => s.day === day) : store.schedule;
+      if (!batchId) return [];
+      let q = query(collection(db, 'schedule'), where('batchId', '==', batchId));
+      if (day) q = query(q, where('day', '==', day));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as ScheduleSlot));
     },
+    enabled: !!batchId,
   });
+};
 
 export const useTodaySchedule = () => {
   const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
@@ -58,251 +51,345 @@ export const useTodaySchedule = () => {
 };
 
 // ── ATTENDANCE ──
-export const useAttendance = (userId?: string) =>
-  useQuery({
-    queryKey: ['attendance', userId],
+export const useAttendance = (userId?: string) => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['attendance', batchId, userId],
     queryFn: async () => {
-      await delay();
-      return userId ? store.attendance.filter((a) => a.userId === userId) : store.attendance;
+      if (!batchId) return [];
+      let q = query(collection(db, 'attendance'), where('batchId', '==', batchId));
+      if (userId) q = query(q, where('userId', '==', userId));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
     },
+    enabled: !!batchId,
   });
+};
 
 export const useMarkAttendance = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
     mutationFn: async ({ userId, courseId, status }: { userId: string; courseId: string; status: 'present' | 'absent' }) => {
-      await delay();
-      const record: AttendanceRecord = {
-        id: genId(), userId, courseId,
+      const record = {
+        userId, courseId, batchId,
         date: new Date().toISOString().slice(0, 10),
         status,
+        timestamp: serverTimestamp()
       };
-      store.attendance.push(record);
-      return record;
+      const ref = await addDoc(collection(db, 'attendance'), record);
+      return { id: ref.id, ...record };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance', batchId] }),
   });
 };
 
 // ── CLASS TESTS ──
-export const useClassTests = () =>
-  useQuery({ queryKey: ['classTests'], queryFn: async () => { await delay(); return store.classTests; } });
+export const useClassTests = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['classTests', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      const snap = await getDocs(query(collection(db, 'classTests'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as ClassTest));
+    },
+    enabled: !!batchId,
+  });
+};
 
 export const useCreateClassTest = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
-    mutationFn: async (test: Omit<ClassTest, 'id'>) => {
-      await delay();
-      const newTest: ClassTest = { ...test, id: genId() };
-      store.classTests.push(newTest);
-      return newTest;
+    mutationFn: async (test: Omit<ClassTest, 'id' | 'batchId'>) => {
+      const newTest = { ...test, batchId };
+      const ref = await addDoc(collection(db, 'classTests'), newTest);
+      return { id: ref.id, ...newTest };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['classTests'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['classTests', batchId] }),
   });
 };
 
-export const useTestVotes = () =>
-  useQuery({ queryKey: ['testVotes'], queryFn: async () => { await delay(); return store.testVotes; } });
+export const useTestVotes = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['testVotes', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      // To scale properly we should put this as a subcollection, but keeping it flat with batchId for now
+      const snap = await getDocs(query(collection(db, 'testVotes'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as TestVote));
+    },
+    enabled: !!batchId,
+  });
+};
 
 export const useVoteTest = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
     mutationFn: async ({ testId, userId, vote }: { testId: string; userId: string; vote: 'up' | 'down' }) => {
-      await delay(50);
-      const existing = store.testVotes.findIndex((v) => v.testId === testId && v.userId === userId);
-      if (existing >= 0) {
-        store.testVotes[existing].vote = vote;
-      } else {
-        store.testVotes.push({ id: genId(), testId, userId, vote });
-      }
+      const id = `${testId}_${userId}`;
+      const ref = doc(db, 'testVotes', id);
+      await setDoc(ref, { testId, userId, vote, batchId });
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['testVotes'] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['testVotes', batchId] }),
   });
 };
 
-export const useTestMarks = (userId?: string) =>
-  useQuery({
-    queryKey: ['testMarks', userId],
+export const useTestMarks = (userId?: string) => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['testMarks', batchId, userId],
     queryFn: async () => {
-      await delay();
-      return userId ? store.testMarks.filter((m) => m.userId === userId) : store.testMarks;
+      if (!batchId) return [];
+      let q = query(collection(db, 'testMarks'), where('batchId', '==', batchId));
+      if (userId) q = query(q, where('userId', '==', userId));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as TestMark));
     },
+    enabled: !!batchId,
   });
+};
 
 export const useUploadMarks = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
     mutationFn: async (marks: Omit<TestMark, 'id'>[]) => {
-      await delay();
-      marks.forEach((m) => {
-        const existing = store.testMarks.findIndex((tm) => tm.testId === m.testId && tm.userId === m.userId);
-        if (existing >= 0) store.testMarks[existing].marks = m.marks;
-        else store.testMarks.push({ ...m, id: genId() });
-      });
+      // Execute in parallel (should use batching ideally)
+      await Promise.all(marks.map(m => {
+        const id = `${m.testId}_${m.userId}`;
+        return setDoc(doc(db, 'testMarks', id), { ...m, batchId });
+      }));
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['testMarks'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['testMarks', batchId] }),
   });
 };
 
 // ── DEADLINES ──
-export const useDeadlines = () =>
-  useQuery({ queryKey: ['deadlines'], queryFn: async () => { await delay(); return store.deadlines; } });
-
-export const useCreateDeadline = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (dl: Omit<Deadline, 'id'>) => {
-      await delay();
-      const newDl: Deadline = { ...dl, id: genId() };
-      store.deadlines.push(newDl);
-      return newDl;
+export const useDeadlines = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['deadlines', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      const snap = await getDocs(query(collection(db, 'deadlines'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as Deadline));
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deadlines'] }),
+    enabled: !!batchId,
   });
 };
 
-export const useDeadlineCompletions = (userId?: string) =>
-  useQuery({
-    queryKey: ['deadlineCompletions', userId],
-    queryFn: async () => {
-      await delay();
-      return userId ? store.deadlineCompletions.filter((dc) => dc.userId === userId) : store.deadlineCompletions;
+export const useCreateDeadline = () => {
+  const qc = useQueryClient();
+  const batchId = useBatchId();
+  return useMutation({
+    mutationFn: async (dl: Omit<Deadline, 'id' | 'batchId'>) => {
+      const ref = await addDoc(collection(db, 'deadlines'), { ...dl, batchId });
+      return { id: ref.id, ...dl };
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['deadlines', batchId] }),
   });
+};
+
+export const useDeadlineCompletions = (userId?: string) => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['deadlineCompletions', batchId, userId],
+    queryFn: async () => {
+      if (!batchId || !userId) return [];
+      const q = query(collection(db, 'deadlineCompletions'), where('userId', '==', userId));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as DeadlineCompletion));
+    },
+    enabled: !!batchId,
+  });
+};
 
 export const useToggleDeadlineDone = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ deadlineId, userId }: { deadlineId: string; userId: string }) => {
-      await delay(50);
-      const idx = store.deadlineCompletions.findIndex((dc) => dc.deadlineId === deadlineId && dc.userId === userId);
-      if (idx >= 0) {
-        store.deadlineCompletions.splice(idx, 1);
+      const id = `${userId}_${deadlineId}`;
+      const ref = doc(db, 'deadlineCompletions', id);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        await deleteDoc(ref);
       } else {
-        store.deadlineCompletions.push({ id: genId(), deadlineId, userId, completedAt: new Date().toISOString() });
+        await setDoc(ref, { userId, deadlineId, completedAt: new Date().toISOString() });
       }
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['deadlineCompletions'] }),
+    onSettled: (_, __, { userId }) => qc.invalidateQueries({ queryKey: ['deadlineCompletions', useBatchId(), userId] }),
   });
 };
 
 // ── EVENTS ──
-export const useEvents = () =>
-  useQuery({ queryKey: ['events'], queryFn: async () => { await delay(); return store.events; } });
-
-export const useCreateEvent = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (ev: Omit<Event, 'id'>) => {
-      await delay();
-      const newEv: Event = { ...ev, id: genId() };
-      store.events.push(newEv);
-      return newEv;
+export const useEvents = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['events', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      const snap = await getDocs(query(collection(db, 'events'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as Event));
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }),
+    enabled: !!batchId,
   });
 };
 
-export const useEventPayments = (eventId?: string) =>
-  useQuery({
-    queryKey: ['eventPayments', eventId],
-    queryFn: async () => {
-      await delay();
-      return eventId ? store.eventPayments.filter((ep) => ep.eventId === eventId) : store.eventPayments;
+export const useCreateEvent = () => {
+  const qc = useQueryClient();
+  const batchId = useBatchId();
+  return useMutation({
+    mutationFn: async (ev: Omit<Event, 'id' | 'batchId'>) => {
+      const ref = await addDoc(collection(db, 'events'), { ...ev, batchId });
+      return { id: ref.id, ...ev };
     },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['events', batchId] }),
   });
+};
+
+export const useEventPayments = (eventId?: string) => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['eventPayments', batchId, eventId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      let q = query(collection(db, 'eventPayments'), where('batchId', '==', batchId));
+      if (eventId) q = query(q, where('eventId', '==', eventId));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as EventPayment));
+    },
+    enabled: !!batchId,
+  });
+};
 
 export const useTogglePayment = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
     mutationFn: async ({ eventId, userId }: { eventId: string; userId: string }) => {
-      await delay(50);
-      const ep = store.eventPayments.find((p) => p.eventId === eventId && p.userId === userId);
-      if (ep) {
-        ep.paid = !ep.paid;
-        ep.paidAt = ep.paid ? new Date().toISOString().slice(0, 10) : undefined;
+      const id = `${eventId}_${userId}`;
+      const ref = doc(db, 'eventPayments', id);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
+        await updateDoc(ref, { paid: !data.paid, paidAt: !data.paid ? new Date().toISOString().slice(0, 10) : null });
       } else {
-        store.eventPayments.push({ id: genId(), eventId, userId, paid: true, paidAt: new Date().toISOString().slice(0, 10) });
+        await setDoc(ref, { eventId, userId, paid: true, paidAt: new Date().toISOString().slice(0, 10), batchId });
       }
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['eventPayments'] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['eventPayments', batchId] }),
   });
 };
 
 // ── NOTES ──
-export const useNotes = () =>
-  useQuery({ queryKey: ['notes'], queryFn: async () => { await delay(); return store.notes; } });
-
-export const useCreateNote = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (note: Omit<Note, 'id'>) => {
-      await delay();
-      const newNote: Note = { ...note, id: genId() };
-      store.notes.push(newNote);
-      return newNote;
+export const useNotes = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['notes', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      const snap = await getDocs(query(collection(db, 'notes'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as Note));
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notes'] }),
+    enabled: !!batchId,
   });
 };
 
-export const useNoteVotes = () =>
-  useQuery({ queryKey: ['noteVotes'], queryFn: async () => { await delay(); return store.noteVotes; } });
+export const useCreateNote = () => {
+  const qc = useQueryClient();
+  const batchId = useBatchId();
+  return useMutation({
+    mutationFn: async (note: Omit<Note, 'id' | 'batchId'>) => {
+      const ref = await addDoc(collection(db, 'notes'), { ...note, batchId });
+      return { id: ref.id, ...note };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notes', batchId] }),
+  });
+};
+
+export const useNoteVotes = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['noteVotes', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      const snap = await getDocs(query(collection(db, 'noteVotes'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as NoteVote));
+    },
+    enabled: !!batchId,
+  });
+};
 
 export const useVoteNote = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
     mutationFn: async ({ noteId, userId, vote }: { noteId: string; userId: string; vote: 'up' | 'down' }) => {
-      await delay(50);
-      const existing = store.noteVotes.findIndex((v) => v.noteId === noteId && v.userId === userId);
-      if (existing >= 0) {
-        store.noteVotes[existing].vote = vote;
-      } else {
-        store.noteVotes.push({ id: genId(), noteId, userId, vote });
-      }
+      const id = `${noteId}_${userId}`;
+      const ref = doc(db, 'noteVotes', id);
+      await setDoc(ref, { noteId, userId, vote, batchId });
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['noteVotes'] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['noteVotes', batchId] }),
   });
 };
 
 // ── TEAM POSTS ──
-export const useTeamPosts = () =>
-  useQuery({ queryKey: ['teamPosts'], queryFn: async () => { await delay(); return store.teamPosts; } });
+export const useTeamPosts = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['teamPosts', batchId],
+    queryFn: async () => {
+      if (!batchId) return [];
+      const snap = await getDocs(query(collection(db, 'teamPosts'), where('batchId', '==', batchId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as TeamPost));
+    },
+    enabled: !!batchId,
+  });
+};
 
 export const useCreateTeamPost = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
-    mutationFn: async (post: Omit<TeamPost, 'id'>) => {
-      await delay();
-      const newPost: TeamPost = { ...post, id: genId() };
-      store.teamPosts.push(newPost);
-      return newPost;
+    mutationFn: async (post: Omit<TeamPost, 'id' | 'batchId'>) => {
+      const ref = await addDoc(collection(db, 'teamPosts'), { ...post, batchId });
+      return { id: ref.id, ...post };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['teamPosts'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['teamPosts', batchId] }),
   });
 };
 
 // ── WAKE UP ──
-export const useWakeUpPriorities = (userId?: string) =>
-  useQuery({
-    queryKey: ['wakeUp', userId],
+export const useWakeUpPriorities = (userId?: string) => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['wakeUp', batchId, userId],
     queryFn: async () => {
-      await delay();
-      return userId ? store.wakeUpPriorities.filter((w) => w.userId === userId) : store.wakeUpPriorities;
+      if (!batchId || !userId) return [];
+      const snap = await getDocs(query(collection(db, 'wakeUpPriorities'), where('userId', '==', userId)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as WakeUpPriority));
     },
+    enabled: !!batchId && !!userId,
   });
+};
 
 export const useUpdateWakeUpPriorities = () => {
   const qc = useQueryClient();
+  const batchId = useBatchId();
   return useMutation({
     mutationFn: async ({ userId, priorities }: { userId: string; priorities: { friendId: string; priority: number }[] }) => {
-      await delay();
-      store.wakeUpPriorities = store.wakeUpPriorities.filter((w) => w.userId !== userId);
-      priorities.forEach((p) => {
-        store.wakeUpPriorities.push({ id: genId(), userId, friendId: p.friendId, priority: p.priority });
-      });
+      // Very crude batching for priorities just to match the old API
+      const snap = await getDocs(query(collection(db, 'wakeUpPriorities'), where('userId', '==', userId)));
+      await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+      await Promise.all(priorities.map(p => 
+        addDoc(collection(db, 'wakeUpPriorities'), { userId, friendId: p.friendId, priority: p.priority, batchId })
+      ));
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['wakeUp'] }),
+    onSuccess: (_, { userId }) => qc.invalidateQueries({ queryKey: ['wakeUp', batchId, userId] }),
   });
 };
 
@@ -314,6 +401,21 @@ export const useCourseName = (courseId: string) => {
 
 // ── HELPER: useUserById ──
 export const useUserById = (userId: string) => {
-  const { allUsers } = useAuth();
-  return allUsers.find((u) => u.id === userId);
+  const batchId = useBatchId();
+  const { data: users = [] } = useQuery({
+    queryKey: ['batchUsers', batchId],
+    queryFn: () => getBatchUsers(batchId),
+    enabled: !!batchId,
+  });
+  return users.find((u: User) => u.id === userId);
+};
+
+// ── HELPER: useBatchUsers ──
+export const useBatchUsers = () => {
+  const batchId = useBatchId();
+  return useQuery({
+    queryKey: ['batchUsers', batchId],
+    queryFn: () => getBatchUsers(batchId),
+    enabled: !!batchId,
+  });
 };

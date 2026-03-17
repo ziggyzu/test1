@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppShell from './components/layout/AppShell';
 import Login from './pages/Login';
+import Setup from './pages/Setup';
 import Dashboard from './pages/Dashboard';
 import Routine from './pages/Routine';
 import ClassTests from './pages/ClassTests';
@@ -25,7 +26,12 @@ const queryClient = new QueryClient({
 
 function ProtectedRoutes() {
   const { user } = useAuth();
+
+  // Not logged in → go to login
   if (!user) return <Navigate to="/login" replace />;
+
+  // Logged in but no batch assigned yet → go to setup
+  if (!user.batchId) return <Navigate to="/setup" replace />;
 
   return (
     <AppShell>
@@ -53,6 +59,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/setup" element={<Setup />} />
             <Route path="/admin/*" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/*" element={<ProtectedRoutes />} />
           </Routes>

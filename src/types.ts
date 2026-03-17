@@ -2,7 +2,16 @@
 // TYPES — Class Companion
 // ============================================================
 
-export type UserRole = 'admin' | 'class_rep' | 'student';
+export type UserRole = 'admin' | 'student';
+
+// ─── BATCH ───
+export interface Batch {
+  id: string;
+  name: string;       // e.g. "BUET CSE 20"
+  code: string;       // e.g. "BCH-XA91" — shared with students
+  adminId: string;
+  createdAt: string;
+}
 
 export interface Assignment {
   id: string;
@@ -14,9 +23,10 @@ export interface Assignment {
 
 export interface Resource {
   id: string;
+  batchId: string;
   title: string;
   link: string;
-  category: string;
+  category: 'telegram' | 'drive' | 'other';
   createdAt: string;
 }
 
@@ -33,10 +43,12 @@ export interface User {
   department: string;
   batch: string;
   section: string;
+  batchId: string;    // Firestore batch document ID
 }
 
 export interface Course {
   id: string;
+  batchId: string;
   code: string;
   name: string;
   instructor: string;
@@ -46,8 +58,9 @@ export interface Course {
 
 export interface ScheduleSlot {
   id: string;
+  batchId: string;
   courseId: string;
-  day: string; // 'Sunday' | 'Monday' ... 
+  day: string; // 'Sunday' | 'Monday' ...
   startTime: string; // "09:00"
   endTime: string;   // "10:30"
   room: string;
@@ -63,6 +76,7 @@ export interface AttendanceRecord {
 
 export interface ClassTest {
   id: string;
+  batchId: string;
   courseId: string;
   title: string;
   date: string; // ISO
@@ -88,6 +102,7 @@ export interface TestMark {
 
 export interface Deadline {
   id: string;
+  batchId: string;
   courseId: string;
   title: string;
   description: string;
@@ -105,6 +120,7 @@ export interface DeadlineCompletion {
 
 export interface Event {
   id: string;
+  batchId: string;
   title: string;
   description: string;
   date: string;
@@ -122,6 +138,7 @@ export interface EventPayment {
 
 export interface Note {
   id: string;
+  batchId: string;
   courseId: string;
   title: string;
   description: string;
@@ -146,6 +163,7 @@ export interface WakeUpPriority {
 
 export interface TeamPost {
   id: string;
+  batchId: string;
   title: string;
   description: string;
   type: 'project' | 'hackathon' | 'study-group';

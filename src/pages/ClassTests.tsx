@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { ClipboardList, ThumbsUp, ThumbsDown, Plus, Award } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useClassTests, useTestVotes, useVoteTest, useCourses, useCreateClassTest, useTestMarks } from '../hooks/useApi';
-import { USERS } from '../data/mockData';
+import { useClassTests, useTestVotes, useVoteTest, useCourses, useCreateClassTest, useTestMarks, useBatchUsers } from '../hooks/useApi';
 
 export default function ClassTests() {
   const { user, isAdmin } = useAuth();
@@ -10,6 +9,7 @@ export default function ClassTests() {
   const { data: votes } = useTestVotes();
   const { data: courses } = useCourses();
   const { data: marks } = useTestMarks();
+  const { data: usersData } = useBatchUsers();
   const voteTest = useVoteTest();
   const createTest = useCreateClassTest();
 
@@ -163,7 +163,7 @@ export default function ClassTests() {
                     <div className="mt-3 pt-3 border-t border-surface-800 space-y-1.5">
                       <p className="text-xs text-surface-500 font-medium">All Marks:</p>
                       {allMarks.map((m) => {
-                        const student = USERS.find((u) => u.id === m.userId);
+                        const student = usersData?.find((u) => u.id === m.userId);
                         return (
                           <div key={m.id} className="flex items-center justify-between text-xs">
                             <span className="text-surface-300">{student?.name}</span>

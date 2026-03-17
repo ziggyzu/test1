@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { AlarmClock, Phone, GripVertical, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useWakeUpPriorities, useUpdateWakeUpPriorities } from '../hooks/useApi';
-import { USERS } from '../data/mockData';
+import { useWakeUpPriorities, useUpdateWakeUpPriorities, useBatchUsers } from '../hooks/useApi';
+import type { User } from '../types';
 
 export default function WakeUpCall() {
   const { user } = useAuth();
   const { data: priorities } = useWakeUpPriorities(user?.id);
-  const updatePriorities = useUpdateWakeUpPriorities();
+  const updatePriorities = useUpdateWakeUpPriorities();  const { data: usersData = [] } = useBatchUsers();
 
-  const friends = USERS.filter((u) => u.id !== user?.id);
+  const friends = usersData.filter((u: User) => u.id !== user?.id);
   const [selected, setSelected] = useState<string[]>(() => {
     const sorted = [...(priorities ?? [])].sort((a, b) => a.priority - b.priority);
     return sorted.map((p) => p.friendId);
@@ -79,7 +79,7 @@ export default function WakeUpCall() {
         {selected.length > 0 && (
           <div className="space-y-2 mb-4">
             {selected.map((friendId, i) => {
-              const friend = USERS.find((u) => u.id === friendId);
+              const friend = usersData.find((u: User) => u.id === friendId);
               if (!friend) return null;
               return (
                 <div key={friendId} className="flex items-center gap-3 bg-primary-600/10 border border-primary-600/20 rounded-xl px-3 py-2.5">
@@ -103,7 +103,7 @@ export default function WakeUpCall() {
 
         {/* Available friends */}
         <div className="space-y-1.5">
-          {friends.filter((f) => !selected.includes(f.id)).map((friend) => (
+          {friends.filter((f: User) => !selected.includes(f.id)).map((friend: User) => (
             <button
               key={friend.id}
               onClick={() => toggleFriend(friend.id)}

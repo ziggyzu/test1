@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarDays, ClipboardList, Calculator, Timer, Users,
@@ -6,10 +6,9 @@ import {
   ChevronRight, Flame,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTodaySchedule, useCourses } from '../hooks/useApi';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
-import type { Assignment, Resource } from '../types';
+import { useTodaySchedule, useCourses, useDeadlines } from '../hooks/useApi';
+import { useQuery } from '@tanstack/react-query';
+import { getResources } from '../lib/firestore';
 
 const quickLinks = [
   { to: '/routine', icon: CalendarDays, label: 'Routine', color: 'from-emerald-500 to-teal-600' },
@@ -44,33 +43,26 @@ function useCountdown(targetDate?: string) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const batchId = user?.batchId || '';
   const { data: todaySlots } = useTodaySchedule();
   const { data: courses } = useCourses();
+  const { data: deadlines = [] } = useDeadlines();
+  
+  const { data: resources = [] } = useQuery({
+    queryKey: ['resources', batchId],
+    queryFn: () => getResources(batchId),
+    enabled: !!batchId,
+  });
 
-  const [liveAssignments, setLiveAssignments] = useState<Assignment[]>([]);
-  const [liveResources, setLiveResources] = useState<Resource[]>([]);
+  const now = new Date();
+  const upcomingDeadlines = [...deadlines]
+    .filter(a => new Date(a.dueDate).getTime() > now.getTime())
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
-  useEffect(() => {
-    const unsubA = onSnapshot(collection(db, 'assignments'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Assignment));
-      // Only keep future ones and sort
-      const now = Date.now();
-      const upcoming = data.filter(a => new Date(a.dueDate).getTime() > now);
-      upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-      setLiveAssignments(upcoming);
-    });
-
-    const unsubR = onSnapshot(collection(db, 'resources'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Resource));
-      data.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      setLiveResources(data);
-    });
-
-    return () => { unsubA(); unsubR(); };
-  }, []);
+  const latestResources = [...resources]
+    .slice(0, 3); // Since we aren't tracking createdAt easily, just take first 3 for now
 
   // Find next class
-  const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const nextSlot = todaySlots
     ?.map((s) => {
@@ -83,11 +75,13 @@ export default function Dashboard() {
   const nextCourse = nextSlot ? courses?.find((c) => c.id === nextSlot.courseId) : null;
 
   // Nearest assignment
-  const nearestAssignment = liveAssignments[0];
+  const nearestAssignment = upcomingDeadlines[0];
   const countdown = useCountdown(nearestAssignment?.dueDate);
 
   const hours = now.getHours();
   const greeting = hours < 12 ? 'Good Morning' : hours < 17 ? 'Good Afternoon' : 'Good Evening';
+
+  const courseMap = Object.fromEntries(courses?.map(c => [c.id, c]) || []);
 
   return (
     <div className="space-y-6 stagger">
@@ -129,9 +123,9 @@ export default function Dashboard() {
               <Timer className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-surface-500 uppercase font-medium">Nearest Assignment</p>
+              <p className="text-xs text-surface-500 uppercase font-medium">Nearest Deadline</p>
               <p className="font-semibold truncate">{nearestAssignment.title}</p>
-              <p className="text-xs text-surface-400">{nearestAssignment.subject}</p>
+              <p className="text-xs text-surface-400">{courseMap[nearestAssignment.courseId]?.code || 'General'}</p>
             </div>
             <div className="text-right">
               <p className="text-lg font-bold text-rose-400 tabular-nums">{countdown}</p>
@@ -160,21 +154,21 @@ export default function Dashboard() {
       </div>
 
       {/* Pending Deadlines Summary */}
-      {liveAssignments.length > 0 && (
+      {upcomingDeadlines.length > 0 && (
         <div className="glass rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider">Upcoming Assignments</h2>
+            <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider">Upcoming Deadlines</h2>
             <Link to="/deadlines" className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1">
               View all <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
           <div className="space-y-2">
-            {liveAssignments.slice(0, 3).map((dl) => (
+            {upcomingDeadlines.slice(0, 3).map((dl) => (
               <div key={dl.id} className="flex items-center gap-3 bg-surface-800/40 rounded-xl px-4 py-3">
                 <div className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{dl.title}</p>
-                  <p className="text-xs text-surface-500">{dl.subject} · {new Date(dl.dueDate).toLocaleDateString('en-BD', { month: 'short', day: 'numeric' })}</p>
+                  <p className="text-xs text-surface-500">{courseMap[dl.courseId]?.code || 'General'} · {new Date(dl.dueDate).toLocaleDateString('en-BD', { month: 'short', day: 'numeric' })}</p>
                 </div>
               </div>
             ))}
@@ -183,7 +177,7 @@ export default function Dashboard() {
       )}
 
       {/* Latest Resources */}
-      {liveResources.length > 0 && (
+      {latestResources.length > 0 && (
         <div className="glass rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-surface-400 uppercase tracking-wider">Latest Resources</h2>
@@ -192,7 +186,7 @@ export default function Dashboard() {
             </Link>
           </div>
           <div className="space-y-2">
-            {liveResources.slice(0, 3).map((res) => (
+            {latestResources.map((res) => (
               <a 
                 href={res.link} 
                 target="_blank" 

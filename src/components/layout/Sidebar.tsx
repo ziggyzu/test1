@@ -20,6 +20,8 @@ const navItems = [
   { to: '/profile', icon: UserCircle, label: 'Profile' },
 ];
 
+import { ShieldCheck } from 'lucide-react';
+
 export default function Sidebar() {
   const { user, logout } = useAuth();
 
@@ -55,6 +57,21 @@ export default function Sidebar() {
             <span>{item.label}</span>
           </NavLink>
         ))}
+        {user?.role === 'admin' && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group mt-4 border border-primary-500/30 ${
+                isActive
+                  ? 'bg-primary-600/20 text-primary-300 shadow-lg shadow-primary-600/10'
+                  : 'text-primary-400 hover:text-primary-300 hover:bg-primary-900/30'
+              }`
+            }
+          >
+            <ShieldCheck className="w-[18px] h-[18px] shrink-0" strokeWidth={1.8} />
+            <span>Admin Panel</span>
+          </NavLink>
+        )}
       </nav>
 
       {/* User footer */}
